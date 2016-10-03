@@ -24,8 +24,8 @@ class ShipAddr(db.Model):
   city = db.Column(db.String)
   state = db.Column(db.String)
   zip_code = db.Column(db.String)
-  uid = db.Column(db.Integer, db.ForeignKey('customer.id'))
-  customer = db.relationship('Customer', backref=db.backref('addr_ship', lazy='dynamic'))
+  customer_id = db.Column(db.Integer, db.ForeignKey('customer.id'))
+  customer = db.relationship('Customer', backref=('ship_addr'))
 
   def __init__(self, f_name, s_name, line_one, line_two, city, state, zip_code, customer):
     self.f_name = f_name
@@ -42,8 +42,8 @@ class Product(db.Model):
   id = db.Column(db.Integer, primary_key=True)
   title = db.Column(db.String(120))
   desc = db.Column(db.Text)
-  price = db.Column(db.Integer)
-  length = db.Column(db.Float)
+  price = db.Column(db.Integer) # In pennies
+  width = db.Column(db.Float)
   height = db.Column(db.Float)
   depth = db.Column(db.Float)
 
@@ -54,6 +54,42 @@ class Product(db.Model):
     self.width = width
     self.height = height
     self.depth = depth
+
+  @property
+  def formatted_price(self):
+    return '${0:.2f}'.format(self.price / 100)
+
+  @property
+  def formatted_width(self):
+    return '{0:.1f}\"'.format(self.width)
+
+  @property
+  def formatted_height(self):
+    return '{0:.1f}\"'.format(self.height)
+
+  @property
+  def formatted_depth(self):
+    return '{0:.1f}\"'.format(self.depth)
+
+  def serialize(self):
+    import json
+    # Rationale for not looping over this:
+    # Similar verbosity (can't reasonably avoid explicitly listing required 
+    # attrs) at the expense of legibility
+    attrs = {
+        'id' : self.id
+      , 'title' : self.title
+      , 'desc' : self.desc
+      , 'price' : self.price
+      , 'formatted_price' : self.formatted_price
+      , 'width' : self.width
+      , 'formatted_width' : self.formatted_width
+      , 'height' : self.height
+      , 'formatted_height' : self.formatted_height
+      , 'depth' : self.depth
+      , 'formatted_depth' : self.formatted_depth
+      }
+    return json.dumps(attrs)
 
 
 class Order(db.Model):
@@ -83,19 +119,15 @@ class Order(db.Model):
     self.discount_rate = discount_rate
 
   @property 
-  def subtotal(self):
+  def total(self):
     from functools import reduce
     lines_total = reduce(lambda l1, l2: l1.total + l2.total, self.lines)
-    discount_multiplier = (100 - self.discount_rate) / 100
+    discount_multiplier = 1 - self.discount_rate / 100
     new_price = lines_total * discount_multiplier
     return int(new_price)
 
-  @property
-  def total(self):
-    tax_multiplier = (100 + self.tax_rate) / 100
-    new_price = self.subtotal * tax_multiplier
-    return int(new_price)
-
+  def serialize(self):
+    pass
 
 
 class Line(db.Model):
@@ -108,21 +140,23 @@ class Line(db.Model):
   tax_rate = db.Column(db.Integer)
   discount_rate = db.Column(db.Integer)
 
-  @property
-  def subtotal(self):
-    discount_multiplier = (100 - self.discount_rate) / 100
-    new_price = self.product.price * discount_multiplier
-    return int(new_price)
-
-  @property
-  def total(self):
-    tax_multiplier = (100 + self.tax_rate) / 100
-    new_price = self.subtotal * tax_multiplier
-    return int(new_price)
-
   def __init__(self, quantity, order, product, tax_rate, discount_rate=0):
     self.quantity = quantity
     self.order = order
     self.product = product
     self.tax_rate = tax_rate
     self.discount_rate = discount_rate
+
+  @property
+  def subtotal(self):
+    discount_multiplier = 1 - self.discount_rate / 100 #TODO: Use Decimal, dickhead.
+    new_price = self.product.price * discount_multiplier
+    return int(new_price)
+
+  @property
+  def total(self):
+    tax_multiplier = 1 + self.tax_rate / 100
+    new_price = self.subtotal * tax_multiplier
+    return int(new_price)
+
+o = Product.query.all()[-1]
