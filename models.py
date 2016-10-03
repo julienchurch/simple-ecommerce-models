@@ -158,5 +158,3 @@ class Line(db.Model):
     tax_multiplier = 1 + self.tax_rate / 100
     new_price = self.subtotal * tax_multiplier
     return int(new_price)
-
-o = Product.query.all()[-1]
